@@ -18,6 +18,7 @@ def lambda_handler(event, context):
 	secret = event['params']['path']['secret']
 	if secret != secret_path:
 		raise Exception("That isn't going to work!")
+	print(event)
 	event_name = event['event_name']
 
 	if event_name == DinnerBotEventName.SUGGEST:
@@ -35,10 +36,30 @@ def lambda_handler(event, context):
 		try:
 			dinner_table.record(prepared_name)
 		except Exception as e:
-			return {'status': 'Failed', 'msg': e}
+			return {'status': 'Failed', 'reason': str(e)}
 
 	elif event_name == DinnerBotEventName.ADD:
-		dinner_table.add(extract_res_name(event), 1)
+		try:
+			res_name, menu = extract_res_info(event)
+
+			if 'donjulio' in res_name.lower():
+				return {'status': 'Failure', 'reason': 'Get that mess out of here!'}
+
+			dinner_table.add(res_name, menu)
+		except Exception as e:
+			return {'status': 'Failed', 'reason': str(e)}
+	elif event_name == DinnerBotEventName.MENU:
+		db_style_name = extract_res_name(event)
+		try:
+			res = dinner_table.get_res(db_style_name)
+		except Exception as e:
+			return {'status': 'Failed', 'reason': str(e)}
+		pretty_name = pretty_print(db_style_name)
+		return {'status': 'Success', pretty_name: res['Menu']}
+	elif event_name == DinnerBotEventName.LIST:
+		formatted_suggestions = [pretty_print(i['ResName']) for i in dinner_table.get_suggestions()]
+		return {'status': 'Success', 'restaurants': formatted_suggestions}
+
 	else:
 		raise NotImplementedError("No valid event name")
 
@@ -46,7 +67,6 @@ def lambda_handler(event, context):
 
 
 def get_suggestions(event):
-
 	formatted_suggestions = [pretty_print(i['ResName']) for i in dinner_table.get_suggestions()]
 	suggestions = []
 	for i in range(5):
@@ -66,20 +86,34 @@ def pretty_print(res_name: str) -> str:
 	return rtn_str
 
 
-def extract_res_name(event):
+def parse_params(event):
 	body_params = event['body'].split('&')
 	body = {i[0]: i[1] for i in [item.split('=') for item in body_params]}
-	res_name = body['text']
+	return body['text'].replace('+', ' ')
+
+
+def extract_res_info(event):
+	res_info = parse_params(event).split(',')
+	if len(res_info) < 2:
+		raise ValueError("No menu added for this restaurant")
+	prepared_name = capitalize_name(res_info[0])
+	return prepared_name, res_info[1]
+
+
+def extract_res_name(event):
+	res_name = parse_params(event)
 	prepared_name = capitalize_name(res_name)
 	return prepared_name
 
 
 def capitalize_name(res_name: str) -> str:
-	return urllib.parse.unquote(res_name).title().replace(' ', '')
+	escaped_res_name = urllib.parse.unquote(res_name).title()
+	print(escaped_res_name)
+	return escaped_res_name.replace(' ', '')
 
 
 if __name__ == '__main__':
-	upvote_dict = {'params': {'path': {'secret': secret_path}, 'querystring': {}, 'header':{}},
+	upvote_dict = {'params': {'path': {'secret': secret_path}, 'querystring': {}, 'header': {}},
 				   'event_name': 'RECORD'}
 
 	print(lambda_handler(upvote_dict, {}))

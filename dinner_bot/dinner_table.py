@@ -29,21 +29,26 @@ class DinnerTable:
 		res['LastVote'] = int(datetime.utcnow().timestamp())
 		self.dynamodb_client.put_item(TableName=self.name, Item=self._serialize(res))
 
-	def add(self, res_name, dist):
+	def add(self, res_name, menu):
 		res_list = self.get_res(res_name)
 		if res_list:
 			raise Exception("Found existing!")
 
 		self.dynamodb_client.put_item(TableName=self.name,
-									  Item=self._serialize({"ResName": res_name, "Distance": str(dist)}))
+									  Item=self._serialize({"ResName": res_name,
+															"Distance": "1",
+															"Menu": menu}))
 
 	def get_res(self, res_name):
 		res = self.dynamodb_client.query(
 			TableName=self.name,
 			KeyConditionExpression='ResName = :val1',
 			ExpressionAttributeValues={':val1': {'S': res_name}}
-		)
-		return [self._deserialize(item) for item in res['Items']]
+		)['Items']
+		if not res:
+			raise ValueError("No restaurant of that name")
+		item = [self._deserialize(item) for item in res][0]
+		return item
 
 
 	def _serialize(self, raw_data):
